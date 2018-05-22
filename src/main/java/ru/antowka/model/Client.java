@@ -2,12 +2,12 @@ package ru.antowka.model;
 
 import lombok.Data;
 
-import java.util.ArrayList;
-import java.util.List;
+import java.util.Collections;
+import java.util.Set;
+import java.util.TreeSet;
 
 @Data
 public class Client {
     private String ip;
-    private List<Long> timestampsOfRequests = new ArrayList<>();
-    private boolean isBlocked;
+    private Set<Long> timestampsOfRequests = Collections.synchronizedSet(new TreeSet<>());
 }

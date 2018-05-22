@@ -1,17 +1,23 @@
 package ru.antowka.service;
 
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import ru.antowka.annotation.RequestLimitByIp;
 import ru.antowka.model.Client;
 
 import java.util.Date;
-import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Service
 public class ClientServiceImpl implements ClientService {
 
-    private static final Map<String, Client> clientPool = new HashMap<>();
+    private static final Map<String, Client> clientPool = new ConcurrentHashMap<>();
+
+    @Value("${client.timeout.inactive.sec}")
+    private Integer timeoutForInactiveClient;
 
     @Override
     public boolean isLimitForClientRequests(String ip, Integer limit, Integer timeoutInSec) {
@@ -23,7 +29,7 @@ public class ClientServiceImpl implements ClientService {
 
         cleanOldTimestampsByClient(client, timeoutInSec);
 
-        if(client.getTimestampsOfRequests().size() > 50) {
+        if (client.getTimestampsOfRequests().size() > 50) {
             return false;
         }
 
@@ -54,8 +60,26 @@ public class ClientServiceImpl implements ClientService {
     }
 
     private void cleanOldTimestampsByClient(Client client, Integer timeLimit) {
-        client
-                .getTimestampsOfRequests()
-                .removeIf(timestamp -> timestamp / 1000 < new Date().getTime() / 1000 - timeLimit);
+
+        for (Iterator<Long> it = client.getTimestampsOfRequests().iterator(); it.hasNext();) {
+            Long timestamp = it.next();
+            if (timestamp < new Date().getTime() - timeLimit * 1000) {
+                it.remove();
+                continue;
+            }
+            break;
+        }
+    }
+
+    @Scheduled(fixedDelay = 60000)
+    public void cleanOldClients() {
+        Long inactiveTimeout = new Date().getTime() - timeoutForInactiveClient * 1000;
+        clientPool
+                .entrySet()
+                .removeIf(client -> client
+                        .getValue()
+                        .getTimestampsOfRequests()
+                        .stream()
+                        .allMatch(timestamp -> timestamp < inactiveTimeout));
     }
 }
